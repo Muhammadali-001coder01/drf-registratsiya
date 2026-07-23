@@ -1,48 +1,38 @@
-from django.contrib.auth import authenticate
-from django.db.models.manager import BaseManager
+from django.contrib.auth.models import User
 from rest_framework import status
-from rest_framework.authtoken.models import Token
-from rest_framework.permissions import IsAuthenticated
-from rest_framework.response import Response
 from rest_framework.views import APIView
-
-from library.models import Book, Category
-
-from .serializers import BookSerializer, CategorySerializer, RegisterSerializer
-from rest_framework import viewsets
+from rest_framework.response import Response
+from rest_framework.permissions import AllowAny, IsAuthenticated
+from rest_framework.authtoken.models import Token
+from django.contrib.auth import authenticate
 
 
 class RegisterView(APIView):
-    def post(self, request):
-        serializer = RegisterSerializer(data=request.data)
+    permission_classes = [AllowAny]
 
-        if serializer.is_valid():
-            serializer.save()
-            return Response(
-                {"message": "User created successfully"},
-                status=status.HTTP_201_CREATED
-            )
-
-        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
-
-
-class LoginView(APIView):
     def post(self, request):
         username = request.data.get("username")
         password = request.data.get("password")
+        if not username or not password:
+            return Response({"error": "username va password majburiy"}, status=status.HTTP_400_BAD_REQUEST)
+        if User.objects.filter(username=username).exists():
+            return Response({"error": "bunday foydalanuvchi bor"}, status=status.HTTP_400_BAD_REQUEST)
+        user = User.objects.create_user(username=username, password=password)
+        token = Token.objects.create(user=user)
+        return Response({"token": token.key}, status=status.HTTP_201_CREATED)
 
+
+class LoginView(APIView):
+    permission_classes = [AllowAny]
+
+    def post(self, request):
+        username = request.data.get("username")
+        password = request.data.get("password")
         user = authenticate(username=username, password=password)
-
-        if user:
-            token, created = Token.objects.get_or_create(user=user)
-            return Response({
-                "token": token.key
-            })
-
-        return Response(
-            {"error": "Username yoki password noto'g'ri"},
-            status=status.HTTP_400_BAD_REQUEST
-        )
+        if user is None:
+            return Response({"error": "login yoki parol xato"}, status=status.HTTP_401_UNAUTHORIZED)
+        token, _ = Token.objects.get_or_create(user=user)
+        return Response({"token": token.key})
 
 
 class LogoutView(APIView):
@@ -50,15 +40,4 @@ class LogoutView(APIView):
 
     def post(self, request):
         request.user.auth_token.delete()
-
-        return Response({
-            "message": "Logged out successfully"
-        })
-
-class CategoryViewSet(viewsets.ModelViewSet):
-    queryset = Category.objects.all()
-    serializer_class = CategorySerializer
-
-class BookViewSet(viewsets.ModelViewSet):
-    queryset: BaseManager = Book.objects.select_related("category").all()
-    serializer_class = BookSerializer
+        return Response({"detail": "muvaffaqiyatli chiqildi"}, status=status.HTTP_200_OK)
